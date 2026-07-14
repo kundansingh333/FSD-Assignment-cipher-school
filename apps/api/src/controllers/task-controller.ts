@@ -41,14 +41,21 @@ export const createTask = async (req: Request, res: Response) => {
   return respond(res, 201, 'Task created', task);
 };
 export const getTask = async (req: Request, res: Response) => {
-  const task = await TaskModel.findById(req.params.taskId).populate(
-    'assignee createdBy',
-    'name email avatarUrl',
-  );
-  return task ? respond(res, 200, 'Task retrieved', task) : respond(res, 404, 'Task not found');
+  const task = await TaskModel.findById(req.params.taskId);
+  if (!task) return respond(res, 404, 'Task not found');
+  if (!(await availableProject(task.project.toString(), req.user!.id))) {
+    return respond(res, 404, 'Task not found');
+  }
+  await task.populate('assignee createdBy', 'name email avatarUrl');
+  return respond(res, 200, 'Task retrieved', task);
 };
 export const updateTask = async (req: Request, res: Response) => {
-  const values = req.body as Record<string, unknown>;
+  const values = taskSchema.partial().parse(req.body);
+  const existingTask = await TaskModel.findById(req.params.taskId);
+  if (!existingTask) return respond(res, 404, 'Task not found');
+  if (!(await availableProject(existingTask.project.toString(), req.user!.id))) {
+    return respond(res, 404, 'Task not found');
+  }
   const task = await TaskModel.findByIdAndUpdate(req.params.taskId, values, {
     new: true,
     runValidators: true,
@@ -69,11 +76,14 @@ export const updateTask = async (req: Request, res: Response) => {
   return respond(res, 200, 'Task updated', task);
 };
 export const deleteTask = async (req: Request, res: Response) => {
-  const task = await TaskModel.findByIdAndDelete(req.params.taskId);
-  if (task)
-    await recordActivity(req.user!.id, 'task.deleted', {
-      project: task.project.toString(),
-      task: task.id,
-    });
-  return task ? respond(res, 200, 'Task deleted') : respond(res, 404, 'Task not found');
+  const task = await TaskModel.findById(req.params.taskId);
+  if (!task || !(await availableProject(task.project.toString(), req.user!.id))) {
+    return respond(res, 404, 'Task not found');
+  }
+  await TaskModel.findByIdAndDelete(req.params.taskId);
+  await recordActivity(req.user!.id, 'task.deleted', {
+    project: task.project.toString(),
+    task: task.id,
+  });
+  return respond(res, 200, 'Task deleted');
 };
