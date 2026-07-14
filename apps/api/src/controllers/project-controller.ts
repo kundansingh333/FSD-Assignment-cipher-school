@@ -26,10 +26,10 @@ export const createProject = async (req: Request, res: Response) => {
   return respond(res, 201, 'Project created', project);
 };
 export const getProject = async (req: Request, res: Response) => {
-  const project = await ProjectModel.findById(req.params.projectId).populate(
-    'owner members',
-    'name email avatarUrl',
-  );
+  const project = await ProjectModel.findOne({
+    _id: req.params.projectId,
+    $or: [{ owner: req.user!.id }, { members: req.user!.id }],
+  }).populate('owner members', 'name email avatarUrl');
   return project
     ? respond(res, 200, 'Project retrieved', project)
     : respond(res, 404, 'Project not found');
