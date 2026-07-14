@@ -1,12 +1,20 @@
 import type { Request, Response } from 'express';
 import { CommentModel } from '../models/comment.js';
 import { TaskModel } from '../models/task.js';
+import { ProjectModel } from '../models/project.js';
 import { commentSchema } from '../validators/schemas.js';
 import { respond } from '../utils/api.js';
 import { recordActivity } from '../services/activity-service.js';
 import { notify } from '../services/notification-service.js';
-export const listComments = async (req: Request, res: Response) =>
-  respond(
+const availableProject = (projectId: string, userId: string) =>
+  ProjectModel.exists({ _id: projectId, $or: [{ owner: userId }, { members: userId }] });
+
+export const listComments = async (req: Request, res: Response) => {
+  const task = await TaskModel.findById(req.params.taskId);
+  if (!task || !(await availableProject(task.project.toString(), req.user!.id))) {
+    return respond(res, 404, 'Task not found');
+  }
+  return respond(
     res,
     200,
     'Comments retrieved',
@@ -14,9 +22,12 @@ export const listComments = async (req: Request, res: Response) =>
       .populate('author', 'name email avatarUrl')
       .sort({ createdAt: 1 }),
   );
+};
 export const createComment = async (req: Request, res: Response) => {
   const task = await TaskModel.findById(req.params.taskId);
-  if (!task) return respond(res, 404, 'Task not found');
+  if (!task || !(await availableProject(task.project.toString(), req.user!.id))) {
+    return respond(res, 404, 'Task not found');
+  }
   const comment = await CommentModel.create({
     ...commentSchema.parse(req.body),
     task: task.id,
